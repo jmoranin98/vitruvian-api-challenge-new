@@ -1,14 +1,19 @@
 <?php
+
 namespace Src;
 
-class Task {
-  private $db;
+use Exception;
+
+class Task
+{
+  private $taskService;
   private $requestMethod;
   private $taskId;
 
   public function __construct($db, $requestMethod, $taskId)
   {
-    $this->db = $db;
+    $taskRepository = new TaskRepository($db);
+    $this->taskService = new TaskService($taskRepository);
     $this->requestMethod = $requestMethod;
     $this->taskId = $taskId;
   }
@@ -32,11 +37,21 @@ class Task {
       case 'DELETE':
         $response = $this->deleteTask($this->taskId);
         break;
+      case 'OPTIONS':
+        die;
       default:
         $response = $this->notFoundResponse();
         break;
     }
+
+    // CORS headers
+    header('Access-Control-Allow-Origin: *');
+    header("Access-Control-Allow-Headers: X-API-KEY, Origin, X-Requested-With, Content-Type, Accept, Access-Control-Request-Method");
+    header("Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE");
+    header("Allow: GET, POST, OPTIONS, PUT, DELETE");
+
     header($response['status_code_header']);
+
     if ($response['body']) {
       echo $response['body'];
     }
@@ -44,68 +59,121 @@ class Task {
 
   private function getAllTask()
   {
-    // start your logic here
-    /*
-    EXAMPLE
-    $query = "
-      SELECT
-        *
-      FROM
-        table;
-    ";
-    ** To connect to DB example: $statement = $this->db->query($query) or $this->db->prepare($statement);
-    ** To Fetch result $statement->fetchAll(\PDO::FETCH_ASSOC);
-    ** Reference https://www.php.net/manual/es/class.pdostatement.php
-    ** don't forget to check for errors
-    */
-    $response['status_code_header'] = 'HTTP/1.1 200 OK';
-    $response['body'] = json_encode(array('message' => 'Your request response'));
+    $statusCode = Http::STATUS_OK;
+    $tasks = [];
+
+    try {
+      $tasks = $this->taskService->getAllTasks();
+    } catch (Exception $e) {
+      $statusCode = Http::STATUS_INTERNAL_ERROR;
+    }
+
+    $response['status_code_header'] = $statusCode;
+    $response['body'] = json_encode($tasks);
     return $response;
   }
 
   private function getTask($id)
   {
-    // start your logic here
-    $response['status_code_header'] = 'HTTP/1.1 200 OK';
-    $response['body'] = json_encode(array('message' => 'Your request response'));
+    $statusCode = Http::STATUS_OK;
+    $task = null;
+
+    try {
+      $task = $this->taskService->getTaskById($id);
+    } catch (TaskNotFoundException $e) {
+      $statusCode = Http::STATUS_NOT_FOUD;
+    } catch (Exception $e) {
+      $statusCode = Http::STATUS_INTERNAL_ERROR;
+    }
+
+    $response['status_code_header'] = $statusCode;
+    $response['body'] = ($task != null) ? json_encode($task) : null;
     return $response;
   }
 
   private function createTask()
   {
-    // start your logic here
-    $response['status_code_header'] = 'HTTP/1.1 200 OK';
-    $response['body'] = json_encode(array('message' => 'Your request response'));
+    $statusCode = Http::STATUS_OK;
+    $requestBody = file_get_contents('php://input');
+    $jsonBody = json_decode($requestBody);
+
+    $task = new TaskModel(
+      null,
+      $jsonBody->name,
+      $jsonBody->description,
+      $jsonBody->autor,
+      $jsonBody->isComplete,
+      null,
+      null
+    );
+
+    try {
+      $task->validate();
+      $this->taskService->createTask($task);
+    } catch (InvalidTaskException $e) {
+      $statusCode = Http::STATUS_BAD_REQUEST;
+    } catch (Exception $e) {
+      var_dump($e->getMessage());
+      $statusCode = Http::STATUS_INTERNAL_ERROR;
+    }
+
+    $response['status_code_header'] = $statusCode;
+    $response['body'] = null;
     return $response;
   }
 
   private function updateTask($id)
   {
-    // start your logic here
-    $response['status_code_header'] = 'HTTP/1.1 200 OK';
-    $response['body'] = json_encode(array('message' => 'Your request response'));
+    $statusCode = Http::STATUS_OK;
+    $requestBody = file_get_contents('php://input');
+    $jsonBody = json_decode($requestBody);
+
+    $task = new TaskModel(
+      null,
+      $jsonBody->name,
+      $jsonBody->description,
+      $jsonBody->autor,
+      $jsonBody->isComplete,
+      null,
+      null
+    );
+
+    try {
+      $task->validate();
+      $this->taskService->updateTask($id, $task);
+    } catch (InvalidTaskException $e) {
+      $statusCode = Http::STATUS_BAD_REQUEST;
+    } catch (TaskNotFoundException $e) {
+      $statusCode = Http::STATUS_NOT_FOUD;
+    } catch (Exception $e) {
+      $statusCode = Http::STATUS_INTERNAL_ERROR;
+    }
+
+    $response['status_code_header'] = $statusCode;
+    $response['body'] = null;
     return $response;
   }
 
   private function deletetask($id)
   {
-    // start your logic here
-    $response['status_code_header'] = 'HTTP/1.1 200 OK';
-    $response['body'] = json_encode(array('message' => 'Your request response'));
-    return $response;
-  }
+    $statusCode = Http::STATUS_OK;
 
-  public function find($id)
-  {
-    // start your logic here
-    $response['status_code_header'] = 'HTTP/1.1 200 OK';
-    $response['body'] = json_encode(array('message' => 'Your request response'));
+    try {
+      $this->taskService->deleteTask($id);
+    } catch (TaskNotFoundException $e) {
+      $statusCode = Http::STATUS_NOT_FOUD;
+    } catch (Exception $e) {
+      $statusCode = Http::STATUS_INTERNAL_ERROR;
+    }
+
+    $response['status_code_header'] = $statusCode;
+    $response['body'] = null;
     return $response;
   }
 
   private function notFoundResponse()
   {
-    $response['status_code_header'] = 'HTTP/1.1 404 Not Found';
+    $response['status_code_header'] = Http::STATUS_NOT_FOUD;
     $response['body'] = null;
     return $response;
   }
